@@ -13,10 +13,13 @@ from torch.utils.data import DataLoader
 from datasets import PlanetoidDataset, TadpoleDataset
 import pytorch_lightning as pl
 from DGMlib.model_dDGM import DGM_Model
+from pytorch_lightning import Callback
 
 from argparse import ArgumentParser
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
-from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.loggers import TensorBoardLogger     
+
+from stats.stats import compute_statistics
 
 def run_training_process(run_params):
     
@@ -38,6 +41,27 @@ def run_training_process(run_params):
     train_loader = DataLoader(train_data, batch_size=1,num_workers=0)
     val_loader = DataLoader(val_data, batch_size=1)
     test_loader = DataLoader(test_data, batch_size=1)
+
+    class MetricsCallback(Callback):
+        def __init__(self):
+            super().__init__()
+            self.metrics = []
+
+        def on_test_end(self, trainer, pl_module):
+            metrics = trainer.callback_metrics
+            save_path = "/home/vietnguyen/hiwi/DGM_pytorch/stats"
+
+            with open(os.path.join(save_path,f"{run_params.dataset}_test_acc.txt".lower()), "a+") as f:
+                f.write(str(metrics["test_acc"].item()))
+                f.write("\n")
+
+            with open(os.path.join(save_path,f"{run_params.dataset}_loss_acc.txt".lower()), "a+") as f:
+                f.write(str(metrics["test_loss"].item()))
+                f.write("\n")
+            
+            compute_statistics(run_params)
+
+            
 
     class MyDataModule(pl.LightningDataModule):
         def setup(self,stage=None):
@@ -74,7 +98,9 @@ def run_training_process(run_params):
         patience=20,
         verbose=False,
         mode='min')
-    callbacks = [checkpoint_callback,early_stop_callback]
+
+    metrics_callback = MetricsCallback()
+    callbacks = [checkpoint_callback,early_stop_callback,metrics_callback]
     
     if val_data==test_data:
         callbacks = None
